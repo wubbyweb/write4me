@@ -1,50 +1,59 @@
-' Main Module
-Option Explicit
 
-Private globalRibbon As IRibbonUI
 
-' Ribbon callback for customUI.onLoad
-Public Sub Ribbon_Load(ribbon As IRibbonUI)
-    Set globalRibbon = ribbon
+' Put this at the top of your regular code module (not in a function)
+Private Type AffirmationSettings
+    ToneStyle As String
+    Length As String
+End Type
+
+
+Private Sub UserForm_Initialize()
+    ' Set default values
+    OptionFormal.Value = True
+    OptionShort.Value = True
+    Cancelled = True
 End Sub
 
-' Main function that will be triggered by the button
-Public Sub RewriteEmail()
-    On Error GoTo ErrorHandler
 
-    ' Validate configuration on startup
-    If Len(GetApiKey()) = 0 Then
-        MsgBox "API Key not configured properly", vbCritical
-        Exit Sub
+' Then the function
+Private Function ShowAffirmationForm() As AffirmationSettings
+    Dim frm As New AffirmationSettingsForm
+    frm.Show
+    
+    Dim settings As AffirmationSettings
+    If Not frm.Cancelled Then
+        settings.ToneStyle = frm.ToneStyle
+        settings.Length = frm.Length
     End If
-
-    Dim objItem As Object
-    Set objItem = Application.ActiveInspector.CurrentItem
-
-    ' Check if we're in compose mode
-    If objItem.Class = olMail Then
-        Dim emailBody As String
-        emailBody = objItem.Body
-        
-        Dim promptText As String
-        promptText = "You are an email editor. Rewrite the following email with no spelling or grammar errors and make it more formal while maintaining the core message."
-        ' Get formal version from OpenAI
-        Dim formalEmail As String
-        formalEmail = GetFormalVersionFromOpenAI(emailBody, promptText)
-
-        ' Update email body if we got a response
-        If Len(formalEmail) > 0 Then
-              objItem.Body = formalEmail & vbCrLf & vbCrLf & "--------------------------------------------------------------------------------" & vbCrLf & emailBody
-        End If
-    End If
-
-    Exit Sub
-
-ErrorHandler:
-    MsgBox "An error occurred: " & Err.Description, vbCritical
-End Sub
-
-' Main function that will be triggered by the button
+    
+    Unload frm
+    ShowAffirmationForm = settings
+End Function
+' Function to generate prompt based on settings
+Private Function GeneratePrompt(settings As AffirmationSettings) As String
+    Dim prompt As String
+    prompt = "You are an email editor. Generate an affirmation response to the email in a " & _
+             settings.ToneStyle & " tone, making it " & settings.Length & ". "
+    
+    Select Case settings.ToneStyle
+        Case "formal"
+            prompt = prompt & "Use professional and respectful language. "
+        Case "casual"
+            prompt = prompt & "Use friendly, conversational language. "
+        Case "humorous"
+            prompt = prompt & "Include appropriate humor while maintaining positivity. "
+    End Select
+    
+    Select Case settings.Length
+        Case "short"
+            prompt = prompt & "Keep the response concise and brief. "
+        Case "long"
+            prompt = prompt & "Provide a detailed and elaborate response. "
+    End Select
+    
+    GeneratePrompt = prompt
+End Function
+' Modified main function
 Public Sub GenerateAffirmation()
     On Error GoTo ErrorHandler
     
@@ -63,10 +72,15 @@ Public Sub GenerateAffirmation()
         Dim emailBody As String
         emailBody = objItem.Body
         
-        Dim promptText As String
-        promptText = "You are an email editor. Read the content and generate an affirmation response to the email, keep the response short."
+        ' Get user preferences through form
+        Dim settings As AffirmationSettings
+        settings = ShowAffirmationForm()
         
-        ' Get formal version from OpenAI
+        ' Generate custom prompt
+        Dim promptText As String
+        promptText = GeneratePrompt(settings)
+        
+        ' Get response from OpenAI
         Dim formalEmail As String
         formalEmail = GetFormalVersionFromOpenAI(emailBody, promptText)
         
@@ -89,7 +103,14 @@ Public Sub GenerateAffirmation()
 ErrorHandler:
     MsgBox "An error occurred: " & Err.Description, vbCritical
 End Sub
-
+' Helper function to format the response
+Private Function CreateFormattedResponse(response As String) As String
+    CreateFormattedResponse = "<div style='font-family: Calibri; font-size: 11pt;'>" & _
+                            Replace(response, vbCrLf, "<br>") & _
+                            "<br><br>" & _
+                            "<hr>" & _
+                            "<br></div>"
+End Function
 
 ' Function to call OpenAI API
 Private Function GetFormalVersionFromOpenAI(originalText As String, promptText As String) As String
@@ -164,4 +185,3 @@ ErrorHandler:
     MsgBox "Error calling OpenAI API: " & Err.Description, vbCritical
     GetFormalVersionFromOpenAI = ""
 End Function
-
