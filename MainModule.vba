@@ -140,31 +140,31 @@ End Function
 
 Private Function GetAIResponse(originalText As String, promptText As String) As String
     On Error GoTo ErrorHandler
-
+    
     Dim apiConfig As apiConfig
     apiConfig = GetActiveApiConfig()
-
+    
     If Len(apiConfig.ApiKey) = 0 Then
         MsgBox "No valid API configuration found", vbCritical
         Exit Function
     End If
-
+    
     Dim xmlhttp As Object
     Set xmlhttp = CreateObject("MSXML2.XMLHTTP")
-
+    
     ' Clean and escape the input text properly
     originalText = CleanTextForJson(originalText)
     promptText = CleanTextForJson(promptText)
-
+    
     ' Prepare API request
     xmlhttp.Open "POST", apiConfig.ApiEndpoint, False
-
+    
     ' Set headers based on API type
     Select Case apiConfig.ApiType
         Case "openai"
             xmlhttp.setRequestHeader "Content-Type", "application/json"
             xmlhttp.setRequestHeader "Authorization", "Bearer " & apiConfig.ApiKey
-
+            
             ' Create OpenAI formatted JSON request
             Dim openAiRequest As String
             openAiRequest = "{" & _
@@ -182,14 +182,14 @@ Private Function GetAIResponse(originalText As String, promptText As String) As 
                 """temperature"": 0.7," & _
                 """max_tokens"": 2000" & _
             "}"
-
+            
             xmlhttp.Send openAiRequest
-
+            
         Case "anthropic"
             xmlhttp.setRequestHeader "Content-Type", "application/json"
             xmlhttp.setRequestHeader "x-api-key", apiConfig.ApiKey
             xmlhttp.setRequestHeader "anthropic-version", "2023-06-01"
-
+            
             ' Create Anthropic formatted JSON request
             Dim anthropicRequest As String
             anthropicRequest = "{" & _
@@ -202,16 +202,16 @@ Private Function GetAIResponse(originalText As String, promptText As String) As 
                     "}" & _
                 "]" & _
             "}"
-
+            
             xmlhttp.Send anthropicRequest
     End Select
-
+    
     ' Enhanced response handling
     If xmlhttp.Status = 200 Then
         Dim responseText As String
         responseText = xmlhttp.responseText
         Debug.Print "Response: " & responseText
-
+        
         ' Parse response based on API type
         Select Case apiConfig.ApiType
             Case "openai"
@@ -224,7 +224,7 @@ Private Function GetAIResponse(originalText As String, promptText As String) As 
                         GetAIResponse = Mid(responseText, openAiStart, openAiEnd - openAiStart)
                     End If
                 End If
-
+                
             Case "anthropic"
                 Dim anthropicStart As Long, anthropicEnd As Long
                 anthropicStart = InStr(responseText, """text"":""")
@@ -236,7 +236,7 @@ Private Function GetAIResponse(originalText As String, promptText As String) As 
                     End If
                 End If
         End Select
-
+        
         ' Unescape special characters
         GetAIResponse = Replace(GetAIResponse, "\n", vbNewLine)
         GetAIResponse = Replace(GetAIResponse, "\""", """")
@@ -249,7 +249,7 @@ Private Function GetAIResponse(originalText As String, promptText As String) As 
         GetAIResponse = ""
     End If
     Exit Function
-
+    
 ErrorHandler:
     Debug.Print "Error: " & Err.Description
     MsgBox "Error calling API: " & Err.Description, vbCritical

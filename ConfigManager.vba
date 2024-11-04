@@ -5,12 +5,21 @@ Public Type apiConfig
     ApiEndpoint As String
 End Type
 
+Private Function GetConfigPath() As String
+    Dim path As String
+    ' Get the path where Outlook stores its data
+    path = Environ("APPDATA") & "\Microsoft\Outlook\"
+    GetConfigPath = path & "config.ini"
+End Function
+
 Private Function GetConfigValue(key As String) As String
     Dim fso As Object
     Set fso = CreateObject("Scripting.FileSystemObject")
     
     Dim configPath As String
-    configPath = "C:\Users\Raj\appdata\Roaming\Microsoft\Outlook\config.ini"
+    'configPath = "C:\Users\Raj\appdata\Roaming\Microsoft\Outlook\config.ini"
+    
+    configPath = GetConfigPath()
     
     ' Check if config file exists
     If Not fso.FileExists(configPath) Then
