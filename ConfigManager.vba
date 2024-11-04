@@ -1,85 +1,89 @@
-' ConfigManager Module
-Option Explicit
-
-Private Type ConfigSettings
+' ConfigManager.vba
+Public Type apiConfig
     ApiKey As String
+    ApiType As String  ' "openai" or "anthropic"
     ApiEndpoint As String
 End Type
 
-Private Config As ConfigSettings
-
-Private Function ReadConfigFile() As Boolean
-    On Error GoTo ErrorHandler
-
+Private Function GetConfigValue(key As String) As String
     Dim fso As Object
-    Dim txtFile As Object
-    Dim configPath As String
-
-    ' Get config file path relative to the Excel file location
-    configPath = "\config.ini"
-
     Set fso = CreateObject("Scripting.FileSystemObject")
-
+    
+    Dim configPath As String
+    configPath = "C:\Users\Raj\appdata\Roaming\Microsoft\Outlook\config.ini"
+    
+    ' Check if config file exists
     If Not fso.FileExists(configPath) Then
-        MsgBox "Configuration file not found at: " & configPath, vbCritical
-        ReadConfigFile = False
+        GetConfigValue = ""
         Exit Function
     End If
-
-    Set txtFile = fso.OpenTextFile(configPath, 1) ' 1 = ForReading
-
-    ' Read and parse config file
-    While Not txtFile.AtEndOfStream
-        Dim line As String
-        line = txtFile.ReadLine
-
-        If InStr(line, "=") > 0 Then
+    
+    ' Read config file
+    Dim fileNum As Integer
+    fileNum = FreeFile
+    
+    Open configPath For Input As #fileNum
+    
+    Dim line As String
+    Do Until EOF(fileNum)
+        Line Input #fileNum, line
+        
+        ' Skip comments and empty lines
+        If Left(Trim(line), 1) <> "#" And Len(Trim(line)) > 0 Then
             Dim parts() As String
             parts = Split(line, "=")
-
-            Select Case Trim(parts(0))
-                Case "OPENAI_API_KEY"
-                    Config.ApiKey = Trim(parts(1))
-                Case "API_ENDPOINT"
-                    Config.ApiEndpoint = Trim(parts(1))
-            End Select
-
-
-
+            
+            If UBound(parts) = 1 Then
+                If Trim(parts(0)) = key Then
+                    GetConfigValue = Trim(parts(1))
+                    Close #fileNum
+                    Exit Function
+                End If
+            End If
         End If
-    Wend
+    Loop
+    
+    Close #fileNum
+    GetConfigValue = ""
+End Function
 
-    txtFile.Close
-
-    ' Validate configuration
-    If Len(Config.ApiKey) = 0 Or Len(Config.ApiEndpoint) = 0 Then
-        MsgBox "Invalid configuration: Missing required settings", vbCritical
-        ReadConfigFile = False
+Public Function GetActiveApiConfig() As apiConfig
+    Dim config As apiConfig
+    
+    ' Try OpenAI first
+    config.ApiKey = Trim(GetConfigValue("OPENAI_API_KEY"))
+    If Len(config.ApiKey) > 0 Then
+        config.ApiType = "openai"
+        config.ApiEndpoint = GetConfigValue("OPENAI_API_ENDPOINT")
+        If Len(config.ApiEndpoint) = 0 Then
+            config.ApiEndpoint = "https://api.openai.com/v1/chat/completions"
+        End If
+        GetActiveApiConfig = config
         Exit Function
     End If
-
-    ReadConfigFile = True
-    Exit Function
-
-ErrorHandler:
-    MsgBox "Error reading configuration: " & Err.Description, vbCritical
-    ReadConfigFile = False
+    
+    ' Try Anthropic if OpenAI not configured
+    config.ApiKey = Trim(GetConfigValue("ANTHROPIC_API_KEY"))
+    If Len(config.ApiKey) > 0 Then
+        config.ApiType = "anthropic"
+        config.ApiEndpoint = GetConfigValue("ANTHROPIC_API_ENDPOINT")
+        If Len(config.ApiEndpoint) = 0 Then
+            config.ApiEndpoint = "https://api.anthropic.com/v1/messages"
+        End If
+        GetActiveApiConfig = config
+        Exit Function
+    End If
+    
+    ' No valid API keys found
+    config.ApiKey = ""
+    config.ApiType = ""
+    config.ApiEndpoint = ""
+    GetActiveApiConfig = config
 End Function
 
-Public Function GetApiKey() As String
-    If Len(Config.ApiKey) = 0 Then
-        If Not ReadConfigFile() Then
-            Exit Function
-        End If
-    End If
-    GetApiKey = Config.ApiKey
-End Function
-
-Public Function GetApiEndpoint() As String
-    If Len(Config.ApiEndpoint) = 0 Then
-        If Not ReadConfigFile() Then
-            Exit Function
-        End If
-    End If
-    GetApiEndpoint = Config.ApiEndpoint
+' Helper function to check if we have a valid API configuration
+Public Function HasValidApiConfig() As Boolean
+    Dim config As apiConfig
+    config = GetActiveApiConfig()
+    HasValidApiConfig = Len(config.ApiKey) > 0
 End Function

@@ -1,11 +1,7 @@
-
-
-' Put this at the top of your regular code module (not in a function)
 Private Type AffirmationSettings
     ToneStyle As String
     Length As String
 End Type
-
 
 Private Sub UserForm_Initialize()
     ' Set default values
@@ -14,8 +10,6 @@ Private Sub UserForm_Initialize()
     Cancelled = True
 End Sub
 
-
-' Then the function
 Private Function ShowAffirmationForm() As AffirmationSettings
     Dim frm As New AffirmationSettingsForm
     frm.Show
@@ -29,7 +23,7 @@ Private Function ShowAffirmationForm() As AffirmationSettings
     Unload frm
     ShowAffirmationForm = settings
 End Function
-' Function to generate prompt based on settings
+
 Private Function GeneratePrompt(settings As AffirmationSettings) As String
     Dim prompt As String
     prompt = "You are an email editor. Generate an affirmation response to the email in a " & _
@@ -53,13 +47,13 @@ Private Function GeneratePrompt(settings As AffirmationSettings) As String
 
     GeneratePrompt = prompt
 End Function
-' Modified main function
+
 Public Sub GenerateAffirmation()
     On Error GoTo ErrorHandler
 
     ' Validate configuration on startup
-    If Len(GetApiKey()) = 0 Then
-        MsgBox "API Key not configured properly", vbCritical
+    If Not HasValidApiConfig() Then
+        MsgBox "API Configuration not found or invalid", vbCritical
         Exit Sub
     End If
 
@@ -80,19 +74,15 @@ Public Sub GenerateAffirmation()
         Dim promptText As String
         promptText = GeneratePrompt(settings)
 
-        ' Get response from OpenAI
-        Dim formalEmail As String
-        formalEmail = GetFormalVersionFromOpenAI(emailBody, promptText)
+        ' Get response from AI
+        Dim aiResponse As String
+        aiResponse = GetAIResponse(emailBody, promptText)
 
         ' Insert at the beginning if we got a response
-        If Len(formalEmail) > 0 Then
+        If Len(aiResponse) > 0 Then
             ' Create the new content with simple HTML formatting
             Dim newContent As String
-            newContent = "<div style='font-family: Calibri; font-size: 11pt;'>" & _
-                        Replace(formalEmail, vbCrLf, "<br>") & _
-                        "<br><br>" & _
-                        "<hr>" & _
-                        "<br></div>"
+            newContent = CreateFormattedResponse(aiResponse)
 
             ' Set the HTMLBody with combined content
             objItem.htmlBody = newContent & objItem.htmlBody
@@ -103,7 +93,7 @@ Public Sub GenerateAffirmation()
 ErrorHandler:
     MsgBox "An error occurred: " & Err.Description, vbCritical
 End Sub
-' Helper function to format the response
+
 Private Function CreateFormattedResponse(response As String) As String
     CreateFormattedResponse = "<div style='font-family: Calibri; font-size: 11pt;'>" & _
                             Replace(response, vbCrLf, "<br>") & _
@@ -111,6 +101,7 @@ Private Function CreateFormattedResponse(response As String) As String
                             "<hr>" & _
                             "<br></div>"
 End Function
+
 Private Function CleanTextForJson(text As String) As String
     Dim cleanText As String
     cleanText = text
@@ -147,9 +138,17 @@ Private Function CleanTextForJson(text As String) As String
     CleanTextForJson = result
 End Function
 
-' Modified GetFormalVersionFromOpenAI function
-Private Function GetFormalVersionFromOpenAI(originalText As String, promptText As String) As String
+Private Function GetAIResponse(originalText As String, promptText As String) As String
     On Error GoTo ErrorHandler
+
+    Dim apiConfig As apiConfig
+    apiConfig = GetActiveApiConfig()
+
+    If Len(apiConfig.ApiKey) = 0 Then
+        MsgBox "No valid API configuration found", vbCritical
+        Exit Function
+    End If
+
     Dim xmlhttp As Object
     Set xmlhttp = CreateObject("MSXML2.XMLHTTP")
 
@@ -158,33 +157,54 @@ Private Function GetFormalVersionFromOpenAI(originalText As String, promptText A
     promptText = CleanTextForJson(promptText)
 
     ' Prepare API request
-    xmlhttp.Open "POST", GetApiEndpoint(), False
-    xmlhttp.setRequestHeader "Content-Type", "application/json"
-    xmlhttp.setRequestHeader "Authorization", "Bearer " & Trim(GetApiKey())
+    xmlhttp.Open "POST", apiConfig.ApiEndpoint, False
 
-    ' Create properly formatted JSON request
-    Dim requestBody As String
-    requestBody = "{" & _
-        """model"": ""gpt-3.5-turbo""," & _
-        """messages"": [" & _
-            "{" & _
-                """role"": ""system""," & _
-                """content"": """ & promptText & """" & _
-            "}," & _
-            "{" & _
-                """role"": ""user""," & _
-                """content"": """ & originalText & """" & _
-            "}" & _
-        "]," & _
-        """temperature"": 0.7," & _
-        """max_tokens"": 2000" & _
-    "}"
+    ' Set headers based on API type
+    Select Case apiConfig.ApiType
+        Case "openai"
+            xmlhttp.setRequestHeader "Content-Type", "application/json"
+            xmlhttp.setRequestHeader "Authorization", "Bearer " & apiConfig.ApiKey
 
-    ' Debug output - check the request
-    Debug.Print "Request Body: " & requestBody
+            ' Create OpenAI formatted JSON request
+            Dim openAiRequest As String
+            openAiRequest = "{" & _
+                """model"": ""gpt-3.5-turbo""," & _
+                """messages"": [" & _
+                    "{" & _
+                        """role"": ""system""," & _
+                        """content"": """ & promptText & """" & _
+                    "}," & _
+                    "{" & _
+                        """role"": ""user""," & _
+                        """content"": """ & originalText & """" & _
+                    "}" & _
+                "]," & _
+                """temperature"": 0.7," & _
+                """max_tokens"": 2000" & _
+            "}"
 
-    ' Send request
-    xmlhttp.Send requestBody
+            xmlhttp.Send openAiRequest
+
+        Case "anthropic"
+            xmlhttp.setRequestHeader "Content-Type", "application/json"
+            xmlhttp.setRequestHeader "x-api-key", apiConfig.ApiKey
+            xmlhttp.setRequestHeader "anthropic-version", "2023-06-01"
+
+            ' Create Anthropic formatted JSON request
+            Dim anthropicRequest As String
+            anthropicRequest = "{" & _
+                """model"": ""claude-3-5-sonnet-20241022""," & _
+                """max_tokens"": 2000," & _
+                """messages"": [" & _
+                    "{" & _
+                        """role"": ""user""," & _
+                        """content"": ""System: " & promptText & "\n\nUser: " & originalText & """" & _
+                    "}" & _
+                "]" & _
+            "}"
+
+            xmlhttp.Send anthropicRequest
+    End Select
 
     ' Enhanced response handling
     If xmlhttp.Status = 200 Then
@@ -192,31 +212,47 @@ Private Function GetFormalVersionFromOpenAI(originalText As String, promptText A
         responseText = xmlhttp.responseText
         Debug.Print "Response: " & responseText
 
-        ' Better JSON parsing
-        Dim startPos As Long, endPos As Long
-        startPos = InStr(responseText, """content"": """)
-        If startPos > 0 Then
-            startPos = startPos + 12  ' Length of """content"": """
-            endPos = InStr(startPos, responseText, """")
-            If endPos > 0 Then
-                GetFormalVersionFromOpenAI = Mid(responseText, startPos, endPos - startPos)
-                ' Unescape special characters
-                GetFormalVersionFromOpenAI = Replace(GetFormalVersionFromOpenAI, "\n", vbNewLine)
-                GetFormalVersionFromOpenAI = Replace(GetFormalVersionFromOpenAI, "\""", """")
-            End If
-        End If
+        ' Parse response based on API type
+        Select Case apiConfig.ApiType
+            Case "openai"
+                Dim openAiStart As Long, openAiEnd As Long
+                openAiStart = InStr(responseText, """content"": """)
+                If openAiStart > 0 Then
+                    openAiStart = openAiStart + 12
+                    openAiEnd = InStr(openAiStart, responseText, """")
+                    If openAiEnd > 0 Then
+                        GetAIResponse = Mid(responseText, openAiStart, openAiEnd - openAiStart)
+                    End If
+                End If
+
+            Case "anthropic"
+                Dim anthropicStart As Long, anthropicEnd As Long
+                anthropicStart = InStr(responseText, """text"":""")
+                If anthropicStart > 0 Then
+                    anthropicStart = anthropicStart + 11
+                    anthropicEnd = InStr(anthropicStart, responseText, """")
+                    If anthropicEnd > 0 Then
+                        GetAIResponse = Mid(responseText, anthropicStart, anthropicEnd - anthropicStart)
+                    End If
+                End If
+        End Select
+
+        ' Unescape special characters
+        GetAIResponse = Replace(GetAIResponse, "\n", vbNewLine)
+        GetAIResponse = Replace(GetAIResponse, "\""", """")
     Else
         Dim errorMsg As String
         errorMsg = "API request failed with status: " & xmlhttp.Status & vbNewLine & _
                   "Response: " & xmlhttp.responseText
         Debug.Print errorMsg
         MsgBox errorMsg, vbCritical
-        GetFormalVersionFromOpenAI = ""
+        GetAIResponse = ""
     End If
     Exit Function
+
 ErrorHandler:
     Debug.Print "Error: " & Err.Description
-    MsgBox "Error calling OpenAI API: " & Err.Description, vbCritical
-    GetFormalVersionFromOpenAI = ""
+    MsgBox "Error calling API: " & Err.Description, vbCritical
+    GetAIResponse = ""
 End Function
 
