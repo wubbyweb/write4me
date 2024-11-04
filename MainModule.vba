@@ -19,13 +19,13 @@ End Sub
 Private Function ShowAffirmationForm() As AffirmationSettings
     Dim frm As New AffirmationSettingsForm
     frm.Show
-    
+
     Dim settings As AffirmationSettings
     If Not frm.Cancelled Then
         settings.ToneStyle = frm.ToneStyle
         settings.Length = frm.Length
     End If
-    
+
     Unload frm
     ShowAffirmationForm = settings
 End Function
@@ -34,7 +34,7 @@ Private Function GeneratePrompt(settings As AffirmationSettings) As String
     Dim prompt As String
     prompt = "You are an email editor. Generate an affirmation response to the email in a " & _
              settings.ToneStyle & " tone, making it " & settings.Length & ". "
-    
+
     Select Case settings.ToneStyle
         Case "formal"
             prompt = prompt & "Use professional and respectful language. "
@@ -43,47 +43,47 @@ Private Function GeneratePrompt(settings As AffirmationSettings) As String
         Case "humorous"
             prompt = prompt & "Include appropriate humor while maintaining positivity. "
     End Select
-    
+
     Select Case settings.Length
         Case "short"
             prompt = prompt & "Keep the response concise and brief. "
         Case "long"
             prompt = prompt & "Provide a detailed and elaborate response. "
     End Select
-    
+
     GeneratePrompt = prompt
 End Function
 ' Modified main function
 Public Sub GenerateAffirmation()
     On Error GoTo ErrorHandler
-    
+
     ' Validate configuration on startup
     If Len(GetApiKey()) = 0 Then
         MsgBox "API Key not configured properly", vbCritical
         Exit Sub
     End If
-    
+
     Dim objItem As Object
     Set objItem = Application.ActiveInspector.CurrentItem
-    
+
     ' Check if we're in compose mode
     If objItem.Class = olMail Then
         ' Store the original content
         Dim emailBody As String
         emailBody = objItem.Body
-        
+
         ' Get user preferences through form
         Dim settings As AffirmationSettings
         settings = ShowAffirmationForm()
-        
+
         ' Generate custom prompt
         Dim promptText As String
         promptText = GeneratePrompt(settings)
-        
+
         ' Get response from OpenAI
         Dim formalEmail As String
         formalEmail = GetFormalVersionFromOpenAI(emailBody, promptText)
-        
+
         ' Insert at the beginning if we got a response
         If Len(formalEmail) > 0 Then
             ' Create the new content with simple HTML formatting
@@ -93,12 +93,12 @@ Public Sub GenerateAffirmation()
                         "<br><br>" & _
                         "<hr>" & _
                         "<br></div>"
-            
+
             ' Set the HTMLBody with combined content
             objItem.htmlBody = newContent & objItem.htmlBody
         End If
     End If
-    
+
     Exit Sub
 ErrorHandler:
     MsgBox "An error occurred: " & Err.Description, vbCritical
@@ -111,24 +111,57 @@ Private Function CreateFormattedResponse(response As String) As String
                             "<hr>" & _
                             "<br></div>"
 End Function
+Private Function CleanTextForJson(text As String) As String
+    Dim cleanText As String
+    cleanText = text
 
-' Function to call OpenAI API
+    ' Escape backslashes first
+    cleanText = Replace(cleanText, "\", "\\")
+
+    ' Escape quotes
+    cleanText = Replace(cleanText, """", "\""")
+
+    ' Handle different types of line breaks
+    cleanText = Replace(cleanText, vbCrLf, "\n")
+    cleanText = Replace(cleanText, vbCr, "\n")
+    cleanText = Replace(cleanText, vbLf, "\n")
+
+    ' Escape tabs
+    cleanText = Replace(cleanText, vbTab, "\t")
+
+    ' Handle other special characters
+    cleanText = Replace(cleanText, "/", "\/")
+
+    ' Remove any control characters
+    Dim i As Long
+    Dim char As String
+    Dim result As String
+
+    For i = 1 To Len(cleanText)
+        char = Mid(cleanText, i, 1)
+        If AscW(char) >= 32 Or char = "\n" Or char = "\t" Then
+            result = result & char
+        End If
+    Next i
+
+    CleanTextForJson = result
+End Function
+
+' Modified GetFormalVersionFromOpenAI function
 Private Function GetFormalVersionFromOpenAI(originalText As String, promptText As String) As String
     On Error GoTo ErrorHandler
     Dim xmlhttp As Object
     Set xmlhttp = CreateObject("MSXML2.XMLHTTP")
-    
+
     ' Clean and escape the input text properly
-    originalText = Replace(originalText, """", "\""")    ' Escape quotes
-    originalText = Replace(originalText, vbCrLf, "\n")   ' Handle line breaks
-    originalText = Replace(originalText, vbCr, "\n")     ' Handle carriage returns
-    originalText = Replace(originalText, vbLf, "\n")     ' Handle line feeds
-    
+    originalText = CleanTextForJson(originalText)
+    promptText = CleanTextForJson(promptText)
+
     ' Prepare API request
     xmlhttp.Open "POST", GetApiEndpoint(), False
     xmlhttp.setRequestHeader "Content-Type", "application/json"
     xmlhttp.setRequestHeader "Authorization", "Bearer " & Trim(GetApiKey())
-    
+
     ' Create properly formatted JSON request
     Dim requestBody As String
     requestBody = "{" & _
@@ -146,18 +179,19 @@ Private Function GetFormalVersionFromOpenAI(originalText As String, promptText A
         """temperature"": 0.7," & _
         """max_tokens"": 2000" & _
     "}"
+
     ' Debug output - check the request
     Debug.Print "Request Body: " & requestBody
-    
+
     ' Send request
     xmlhttp.Send requestBody
-    
+
     ' Enhanced response handling
     If xmlhttp.Status = 200 Then
         Dim responseText As String
         responseText = xmlhttp.responseText
         Debug.Print "Response: " & responseText
-        
+
         ' Better JSON parsing
         Dim startPos As Long, endPos As Long
         startPos = InStr(responseText, """content"": """)
@@ -185,3 +219,4 @@ ErrorHandler:
     MsgBox "Error calling OpenAI API: " & Err.Description, vbCritical
     GetFormalVersionFromOpenAI = ""
 End Function
+
