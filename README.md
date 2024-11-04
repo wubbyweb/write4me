@@ -47,6 +47,23 @@ A VBA-based Microsoft Outlook add-in that helps generate AI-powered affirmative 
 - OpenAI API access
 - Active internet connection
 
+## Project Structure
+outlook-email-affirmation/
+├── src/
+│ ├── modules/
+│ │ ├── MainModule.vba # Main functionality and UI handling
+│ │ └── ConfigManager.vba # Configuration and API key management
+│ └── forms/
+│ └── AffirmationSettingsForm.frm # UI form for tone/length settings
+│
+├── config/
+│ └── config.ini # API configuration (not committed)
+│
+├── docs/
+│ └── images/ # Documentation images
+│
+└── README.md # Project documentation
+
 ## Error Handling
 
 The system includes comprehensive error handling for:
