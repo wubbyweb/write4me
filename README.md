@@ -1,7 +1,7 @@
 # Outlook Email Affirmation Assistant
 
 A VBA-based Microsoft Outlook add-in that helps generate AI-powered affirmative responses to emails using OpenAI's GPT API.
-
+PROJECT SUNSET
 ## Setup Instructions
 
 1. **Config File Setup**
